@@ -4978,6 +4978,8 @@ static const struct pci_dev_acs_enabled {
 	{ 0x10b5, PCI_ANY_ID, pci_quirk_xgene_acs },
 	/* because rootcomplex Vendor id is 0x17cd on phytium cpu */
 	{ 0x17cd, PCI_ANY_ID, pci_quirk_xgene_acs },
+
+	{ 0x1db7, PCI_ANY_ID, pci_quirk_xgene_acs },
 #endif
 	{ PCI_VENDOR_ID_TRUSTNETIC, PCI_ANY_ID, pci_quirk_mf_endpoint_acs },
 	{ 0 }
@@ -5362,6 +5364,7 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0142, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0144, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0420, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0422, quirk_no_ext_tags);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PHYTIUM, 0xdc3a, quirk_no_ext_tags);
 
 #ifdef CONFIG_PCI_ATS
 /*
