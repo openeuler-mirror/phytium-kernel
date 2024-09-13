@@ -20,6 +20,7 @@ subdir-y += mediatek
 subdir-y += microchip
 subdir-y += nvidia
 subdir-y += qcom
+subdir-y += phytium
 subdir-y += realtek
 subdir-y += renesas
 subdir-y += rockchip
