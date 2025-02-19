@@ -51,6 +51,8 @@ static LIST_HEAD(scmi_list);
 static DEFINE_MUTEX(scmi_list_mutex);
 /* Track the unique id for the transfers for debug & profiling purpose */
 static atomic_t transfer_last_id;
+/* Protection for scmi xfer, prevent transmission timeout */
+static DEFINE_MUTEX(scmi_xfer_mutex);
 
 /**
  * struct scmi_xfers_info - Structure to manage transfer information
@@ -333,8 +335,6 @@ void scmi_xfer_put(const struct scmi_handle *handle, struct scmi_xfer *xfer)
 	__scmi_xfer_put(&info->tx_minfo, xfer);
 }
 
-#define SCMI_MAX_POLL_TO_NS	(100 * NSEC_PER_USEC)
-
 static bool scmi_xfer_done_no_timeout(struct scmi_chan_info *cinfo,
 				      struct scmi_xfer *xfer, ktime_t stop)
 {
@@ -366,6 +366,13 @@ int scmi_do_xfer(const struct scmi_handle *handle, struct scmi_xfer *xfer)
 	if (unlikely(!cinfo))
 		return -EINVAL;
 
+#ifdef CONFIG_ARM_SCMI_TRANSPORT_FORCE_POLLING
+	xfer->hdr.poll_completion = true;
+#endif
+
+	/* lock scmi xfer, too many scmi xfers may cause timeout */
+	mutex_lock(&scmi_xfer_mutex);
+
 	trace_scmi_xfer_begin(xfer->transfer_id, xfer->hdr.id,
 			      xfer->hdr.protocol_id, xfer->hdr.seq,
 			      xfer->hdr.poll_completion);
@@ -373,15 +380,18 @@ int scmi_do_xfer(const struct scmi_handle *handle, struct scmi_xfer *xfer)
 	ret = info->desc->ops->send_message(cinfo, xfer);
 	if (ret < 0) {
 		dev_dbg(dev, "Failed to send message %d\n", ret);
+		mutex_unlock(&scmi_xfer_mutex);
 		return ret;
 	}
 
 	if (xfer->hdr.poll_completion) {
-		ktime_t stop = ktime_add_ns(ktime_get(), SCMI_MAX_POLL_TO_NS);
+		ktime_t stop = ktime_add_ms(ktime_get(),
+					    info->desc->max_rx_timeout_ms);
 
 		spin_until_cond(scmi_xfer_done_no_timeout(cinfo, xfer, stop));
 
-		if (ktime_before(ktime_get(), stop))
+		if (ktime_before(ktime_get(), stop) ||
+		    info->desc->ops->poll_done(cinfo, xfer))
 			info->desc->ops->fetch_response(cinfo, xfer);
 		else
 			ret = -ETIMEDOUT;
@@ -403,6 +413,7 @@ int scmi_do_xfer(const struct scmi_handle *handle, struct scmi_xfer *xfer)
 
 	trace_scmi_xfer_end(xfer->transfer_id, xfer->hdr.id,
 			    xfer->hdr.protocol_id, xfer->hdr.seq, ret);
+	mutex_unlock(&scmi_xfer_mutex);
 
 	return ret;
 }
