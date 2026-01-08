@@ -2,12 +2,8 @@
 /*
  * Phytium SPI core controller platform driver.
  *
- * Copyright (c) 2019-2023, Phytium Technology Co., Ltd.
- *
- * Derived from drivers/spi/spi-dw-mmio.c
- *   Copyright (c) 2010, Octasic semiconductor.
+ * Copyright (c) 2019-2024 Phytium Technology Co., Ltd.
  */
-
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -29,29 +25,26 @@
 #include "spi-phytium.h"
 
 #define DRIVER_NAME "phytium_spi"
+#define DRIVER_VERSION	"1.0.0"
 
-struct phytium_spi_clk {
-	struct phytium_spi  fts;
-	struct clk     *clk;
-};
+#define SPI_PHYTIUM_DEFAULT_CLK_RATE	50000000
 
 static int phytium_spi_probe(struct platform_device *pdev)
 {
-	struct phytium_spi_clk *ftsc;
+	struct device *dev = &pdev->dev;
 	struct phytium_spi *fts;
 	struct resource *mem;
 	int ret;
 	int num_cs;
 	int cs_gpio;
-	int global_cs;
+	int global_cs = 0;
 	int i;
+	u32 clk_rate = SPI_PHYTIUM_DEFAULT_CLK_RATE;
 
-	ftsc = devm_kzalloc(&pdev->dev, sizeof(struct phytium_spi_clk),
+	fts = devm_kzalloc(&pdev->dev, sizeof(struct phytium_spi),
 			GFP_KERNEL);
-	if (!ftsc)
+	if (!fts)
 		return -ENOMEM;
-
-	fts = &ftsc->fts;
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem) {
@@ -59,6 +52,7 @@ static int phytium_spi_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	fts->paddr = mem->start;
 	fts->regs = devm_ioremap_resource(&pdev->dev, mem);
 	if (IS_ERR(fts->regs)) {
 		dev_err(&pdev->dev, "SPI region map failed\n");
@@ -72,27 +66,26 @@ static int phytium_spi_probe(struct platform_device *pdev)
 	}
 
 	if (pdev->dev.of_node) {
-		ftsc->clk = devm_clk_get(&pdev->dev, NULL);
+		fts->clk = devm_clk_get(&pdev->dev, NULL);
 
-		if (IS_ERR(ftsc->clk))
-			return PTR_ERR(ftsc->clk);
-		ret = clk_prepare_enable(ftsc->clk);
+		if (IS_ERR(fts->clk))
+			return PTR_ERR(fts->clk);
+		ret = clk_prepare_enable(fts->clk);
 		if (ret)
 			return ret;
 
-		fts->max_freq = clk_get_rate(ftsc->clk);
+		fts->max_freq = clk_get_rate(fts->clk);
 	} else if (has_acpi_companion(&pdev->dev)) {
-		fts->max_freq = 48000000;
+		fts->max_freq = clk_rate;
+		if (!fwnode_property_read_u32(dev->fwnode, "spi-clock", &clk_rate))
+			fts->max_freq = clk_rate;
 	}
 
 	fts->bus_num = pdev->id;
-	device_property_read_u32(&pdev->dev,
-			"reg-io-width", &fts->reg_io_width);
+	device_property_read_u32(&pdev->dev, "reg-io-width", &fts->reg_io_width);
 
 	num_cs = 4;
-
 	device_property_read_u32(&pdev->dev, "num-cs", &num_cs);
-
 	fts->num_cs = num_cs;
 
 	if (pdev->dev.of_node) {
@@ -114,51 +107,63 @@ static int phytium_spi_probe(struct platform_device *pdev)
 					goto out;
 			}
 		}
-	} else if (has_acpi_companion(&pdev->dev)) {
+	} else if(has_acpi_companion(&pdev->dev)) {
 		int n;
 		int *cs;
 		struct gpio_desc *gpiod;
 
-		n =  gpiod_count(&pdev->dev, "cs");
+		n = gpiod_count(&pdev->dev, "cs");
 
 		cs = devm_kcalloc(&pdev->dev, n, sizeof(int), GFP_KERNEL);
 		fts->cs = cs;
 
 		for (i = 0; i < n; i++) {
-			gpiod = devm_gpiod_get_index_optional(&pdev->dev,
-							"cs", i, GPIOD_OUT_LOW);
+			gpiod = devm_gpiod_get_index_optional(&pdev->dev, "cs", i,
+							      GPIOD_OUT_LOW);
 
 			if (IS_ERR(gpiod)) {
 				ret = PTR_ERR(gpiod);
 				goto out;
 			}
 
-			cs_gpio = desc_to_gpio(gpiod);
-			cs[i] = cs_gpio;
+			if (gpiod) {
+				cs_gpio = desc_to_gpio(gpiod);
+				cs[i] = cs_gpio;
+			} else {
+				cs[i] = -ENOENT;
+			}
 		}
 	}
 
 	device_property_read_u32(&pdev->dev, "global-cs", &global_cs);
 	fts->global_cs = global_cs;
 
+	/* check is use dma transfer */
+	if ((device_property_read_string_array(&pdev->dev, "dma-names",
+					NULL, 0) > 0) &&
+		device_property_present(&pdev->dev, "dmas")) {
+		fts->dma_en = true;
+		phytium_spi_dmaops_set(fts);
+	}
+
 	ret = phytium_spi_add_host(&pdev->dev, fts);
 	if (ret)
 		goto out;
 
-	platform_set_drvdata(pdev, ftsc);
+	platform_set_drvdata(pdev, fts);
 	return 0;
 
 out:
-	clk_disable_unprepare(ftsc->clk);
+	clk_disable_unprepare(fts->clk);
 	return ret;
 }
 
 static int phytium_spi_remove(struct platform_device *pdev)
 {
-	struct phytium_spi_clk *ftsc = platform_get_drvdata(pdev);
+	struct phytium_spi *fts = platform_get_drvdata(pdev);
 
-	phytium_spi_remove_host(&ftsc->fts);
-	clk_disable_unprepare(ftsc->clk);
+	phytium_spi_remove_host(fts);
+	clk_disable_unprepare(fts->clk);
 
 	return 0;
 }
@@ -166,16 +171,14 @@ static int phytium_spi_remove(struct platform_device *pdev)
 #ifdef CONFIG_PM_SLEEP
 static int spi_suspend(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct phytium_spi *fts = spi_master_get_devdata(master);
+	struct phytium_spi *fts = dev_get_drvdata(dev);
 
 	return phytium_spi_suspend_host(fts);
 }
 
 static int spi_resume(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct phytium_spi *fts = spi_master_get_devdata(master);
+	struct phytium_spi *fts = dev_get_drvdata(dev);
 
 	return phytium_spi_resume_host(fts);
 }
@@ -210,3 +213,4 @@ module_platform_driver(phytium_spi_driver);
 MODULE_AUTHOR("Yiqun Zhang <zhangyiqun@phytium.com.cn>");
 MODULE_DESCRIPTION("Platform Driver for Phytium SPI controller core");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(DRIVER_VERSION);

@@ -1,13 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
+ // SPDX-License-Identifier: GPL-2.0
 /*
  * Phytium SPI core controller driver.
  *
- * Copyright (c) 2019-2023, Phytium Technology Co., Ltd..
- *
- * Derived from drivers/spi/spi-dw.c
- *   Copyright (c) 2009, Intel Corporation.
+ * Copyright (c) 2019-2024 Phytium Technology Co., Ltd.
  */
-
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -26,103 +22,6 @@
 #include <linux/property.h>
 #include <linux/acpi.h>
 #include "spi-phytium.h"
-
-static inline u32 phytium_readl(struct phytium_spi *fts, u32 offset)
-{
-	return __raw_readl(fts->regs + offset);
-}
-
-static inline u16 phytium_readw(struct phytium_spi *fts, u32 offset)
-{
-	return __raw_readw(fts->regs + offset);
-}
-
-static inline void phytium_writel(struct phytium_spi *fts, u32 offset, u32 val)
-{
-	__raw_writel(val, fts->regs + offset);
-}
-
-static inline void phytium_writew(struct phytium_spi *fts, u32 offset, u16 val)
-{
-	__raw_writew(val, fts->regs + offset);
-}
-
-static inline u32 phytium_read_io_reg(struct phytium_spi *fts, u32 offset)
-{
-	switch (fts->reg_io_width) {
-	case 2:
-		return phytium_readw(fts, offset);
-	case 4:
-	default:
-		return phytium_readl(fts, offset);
-	}
-}
-
-static inline void phytium_write_io_reg(struct phytium_spi *fts,
-		u32 offset, u32 val)
-{
-	switch (fts->reg_io_width) {
-	case 2:
-		phytium_writew(fts, offset, val);
-		break;
-	case 4:
-	default:
-		phytium_writel(fts, offset, val);
-		break;
-	}
-}
-
-static inline void spi_enable_chip(struct phytium_spi *fts, int enable)
-{
-	phytium_writel(fts, SSIENR, (enable ? 1 : 0));
-}
-
-static inline void spi_set_clk(struct phytium_spi *fts, u16 div)
-{
-	phytium_writel(fts, BAUDR, div);
-}
-
-static inline void spi_mask_intr(struct phytium_spi *fts, u32 mask)
-{
-	u32 new_mask;
-
-	new_mask = phytium_readl(fts, IMR) & ~mask;
-	phytium_writel(fts, IMR, new_mask);
-}
-
-static inline void spi_umask_intr(struct phytium_spi *fts, u32 mask)
-{
-	u32 new_mask;
-
-	new_mask = phytium_readl(fts, IMR) | mask;
-	phytium_writel(fts, IMR, new_mask);
-}
-
-static inline void spi_global_cs(struct phytium_spi *fts)
-{
-	u32 global_cs_en, mask, setmask;
-
-	mask = GENMASK(fts->num_cs-1, 0) << fts->num_cs;
-	setmask = ~GENMASK(fts->num_cs-1, 0);
-	global_cs_en = (phytium_readl(fts, GCSR) | mask) & setmask;
-
-	phytium_writel(fts, GCSR, global_cs_en);
-}
-
-static inline void spi_reset_chip(struct phytium_spi *fts)
-{
-	spi_enable_chip(fts, 0);
-	if (fts->global_cs)
-		spi_global_cs(fts);
-	spi_mask_intr(fts, 0xff);
-	spi_enable_chip(fts, 1);
-}
-
-static inline void spi_shutdown_chip(struct phytium_spi *fts)
-{
-	spi_enable_chip(fts, 0);
-	spi_set_clk(fts, 0);
-}
 
 struct phytium_spi_chip {
 	u8 poll_mode;
@@ -155,14 +54,12 @@ static void phytium_spi_set_cs(struct spi_device *spi, bool enable)
 		phytium_writel(fts, SER, BIT(spi->chip_select));
 		if (fts->global_cs) {
 			origin = phytium_readl(fts, GCSR);
-			phytium_writel(fts, GCSR,
-					origin | (1 << spi->chip_select));
+			phytium_writel(fts, GCSR, origin | (1 << spi->chip_select));
 		}
 	} else {
 		if (fts->global_cs) {
 			origin = phytium_readl(fts, GCSR);
-			phytium_writel(fts, GCSR,
-					origin & ~(1 << spi->chip_select));
+			phytium_writel(fts, GCSR, origin & ~(1 << spi->chip_select));
 		}
 	}
 }
@@ -221,6 +118,42 @@ static void phytium_reader(struct phytium_spi *fts)
 	}
 }
 
+int phytium_spi_check_status(struct phytium_spi *fts, bool raw)
+{
+	u32 irq_status;
+	int ret = 0;
+
+	if (raw)
+		irq_status = phytium_readl(fts, RISR);
+	else
+		irq_status = phytium_readl(fts, ISR);
+
+	if (irq_status & INT_RXOI) {
+		dev_err(&fts->master->dev, "RX FIFO overflow detected\n");
+		ret = -EIO;
+	}
+
+	if (irq_status & INT_RXUI) {
+		dev_err(&fts->master->dev, "RX FIFO underflow detected\n");
+		ret = -EIO;
+	}
+
+	if (irq_status & INT_TXOI) {
+		dev_err(&fts->master->dev, "TX FIFO overflow detected\n");
+		ret = -EIO;
+	}
+
+	/* Generically handle the erroneous situation */
+	if (ret) {
+		spi_reset_chip(fts);
+		if (fts->master->cur_msg)
+			fts->master->cur_msg->status = ret;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(phytium_spi_check_status);
+
 static void int_error_stop(struct phytium_spi *fts, const char *msg)
 {
 	spi_reset_chip(fts);
@@ -236,7 +169,7 @@ static irqreturn_t interrupt_transfer(struct phytium_spi *fts)
 
 	if (irq_status & (INT_TXOI | INT_RXOI | INT_RXUI)) {
 		phytium_readl(fts, ICR);
-		int_error_stop(fts, "irq transfer: fifo overrun/underrun");
+		int_error_stop(fts, "interrupt_transfer: fifo overrun/underrun");
 		return IRQ_HANDLED;
 	}
 
@@ -295,7 +228,9 @@ static int phytium_spi_transfer_one(struct spi_master *master,
 	u16 txlevel = 0;
 	u16 clk_div;
 	u32 cr0;
+	int ret = 0;
 
+	fts->dma_mapped = 0;
 	fts->tx = (void *)transfer->tx_buf;
 	fts->tx_end = fts->tx + transfer->len;
 	fts->rx = transfer->rx_buf;
@@ -304,21 +239,25 @@ static int phytium_spi_transfer_one(struct spi_master *master,
 
 	spi_enable_chip(fts, 0);
 
-	if (transfer->speed_hz != chip->speed_hz) {
-		clk_div = (fts->max_freq / transfer->speed_hz + 1) & 0xfffe;
+	if (transfer->speed_hz != fts->current_freq) {
+		if (transfer->speed_hz != chip->speed_hz) {
+			clk_div = (fts->max_freq / transfer->speed_hz + 1) &
+				0xfffe;
 
-		chip->speed_hz = transfer->speed_hz;
-		chip->clk_div = clk_div;
-
+			chip->speed_hz = transfer->speed_hz;
+			chip->clk_div = clk_div;
+		}
+		fts->current_freq = transfer->speed_hz;
 		spi_set_clk(fts, chip->clk_div);
 	}
 
-	if (transfer->bits_per_word == 8)
+	if (transfer->bits_per_word == 8) {
 		fts->n_bytes = 1;
-	else if (transfer->bits_per_word == 16)
+	} else if (transfer->bits_per_word == 16) {
 		fts->n_bytes = 2;
-	else
+	} else {
 		return -EINVAL;
+	}
 
 	cr0 = (transfer->bits_per_word - 1)
 		| (chip->type << FRF_OFFSET)
@@ -337,13 +276,24 @@ static int phytium_spi_transfer_one(struct spi_master *master,
 		cr0 |= (chip->tmode << TMOD_OFFSET);
 	}
 
-	phytium_writel(fts, CTRL0, cr0);
+	phytium_writel(fts, CTRLR0, cr0);
+
+	/* check if current transfer is a DMA transcation */
+	if (master->can_dma && master->can_dma(master, spi, transfer))
+		fts->dma_mapped = master->cur_msg_mapped;
 
 	spi_mask_intr(fts, 0xff);
 
-	if (!chip->poll_mode) {
-		txlevel = min_t(u16, fts->fifo_len / 2,
-				fts->len / fts->n_bytes);
+	/* DMA setup */
+	if (fts->dma_mapped) {
+		ret = fts->dma_ops->dma_setup(fts, transfer);
+		if (ret)
+			return ret;
+	}
+
+	/* interrupt transfer mode setup */
+	if (!chip->poll_mode && !fts->dma_mapped) {
+		txlevel = min_t(u16, fts->fifo_len / 2, fts->len / fts->n_bytes);
 		phytium_writel(fts, TXFLTR, txlevel);
 
 		imask |= INT_TXEI | INT_TXOI |
@@ -355,6 +305,9 @@ static int phytium_spi_transfer_one(struct spi_master *master,
 
 	spi_enable_chip(fts, 1);
 
+	if (fts->dma_mapped)
+		return fts->dma_ops->dma_transfer(fts, transfer);
+
 	if (chip->poll_mode)
 		return poll_transfer(fts);
 
@@ -365,6 +318,9 @@ static void phytium_spi_handle_err(struct spi_master *master,
 		struct spi_message *msg)
 {
 	struct phytium_spi *fts = spi_master_get_devdata(master);
+
+	if (fts->dma_mapped)
+		fts->dma_ops->dma_stop(fts);
 
 	spi_reset_chip(fts);
 }
@@ -403,7 +359,7 @@ static int phytium_spi_setup(struct spi_device *spi)
 	cr0 = (spi->bits_per_word - 1) | (chip->type << FRF_OFFSET) |
 	      (spi->mode << MODE_OFFSET) | (chip->tmode << TMOD_OFFSET);
 
-	phytium_writel(fts, CTRL0, cr0);
+	phytium_writel(fts, CTRLR0, cr0);
 
 	if (gpio_is_valid(spi->cs_gpio)) {
 		ret = gpio_direction_output(spi->cs_gpio,
@@ -449,17 +405,19 @@ int phytium_spi_add_host(struct device *dev, struct phytium_spi *fts)
 	struct spi_master *master;
 	int ret;
 
-	WARN_ON(fts == NULL);
+	BUG_ON(fts == NULL);
 
 	master = spi_alloc_master(dev, 0);
 	if (!master)
 		return -ENOMEM;
 
 	fts->master = master;
+	fts->dma_addr = (dma_addr_t)(fts->paddr + DR);
 	snprintf(fts->name, sizeof(fts->name), "phytium_spi%d", fts->bus_num);
 
-	ret = request_irq(fts->irq, phytium_spi_irq,
-				IRQF_SHARED, fts->name, master);
+	spi_hw_init(dev, fts);
+
+	ret = request_irq(fts->irq, phytium_spi_irq, IRQF_SHARED, fts->name, master);
 	if (ret < 0) {
 		dev_err(dev, "can not get IRQ\n");
 		goto err_free_master;
@@ -480,7 +438,15 @@ int phytium_spi_add_host(struct device *dev, struct phytium_spi *fts)
 	master->flags = SPI_MASTER_GPIO_SS;
 	master->cs_gpios = fts->cs;
 
-	spi_hw_init(dev, fts);
+	if (fts->dma_ops && fts->dma_ops->dma_init) {
+		ret = fts->dma_ops->dma_init(dev, fts);
+		if (ret) {
+			dev_warn(dev, "DMA init failed\n");
+		} else {
+			master->can_dma = fts->dma_ops->can_dma;
+			master->flags |= SPI_CONTROLLER_MUST_TX;
+		}
+	}
 
 	spi_master_set_devdata(master, fts);
 	ret = devm_spi_register_master(dev, master);
@@ -492,6 +458,8 @@ int phytium_spi_add_host(struct device *dev, struct phytium_spi *fts)
 	return 0;
 
 err_exit:
+	if (fts->dma_ops && fts->dma_ops->dma_exit)
+		fts->dma_ops->dma_exit(fts);
 	spi_enable_chip(fts, 0);
 	free_irq(fts->irq, master);
 err_free_master:
@@ -502,6 +470,8 @@ EXPORT_SYMBOL_GPL(phytium_spi_add_host);
 
 void phytium_spi_remove_host(struct phytium_spi *fts)
 {
+	if (fts->dma_ops && fts->dma_ops->dma_exit)
+		fts->dma_ops->dma_exit(fts);
 	spi_shutdown_chip(fts);
 
 	free_irq(fts->irq, fts->master);

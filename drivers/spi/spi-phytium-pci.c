@@ -2,10 +2,7 @@
 /*
  * Phytium SPI core controller PCI driver.
  *
- * Copyright (c) 2019-2023, Phytium Technology Co., Ltd.
- *
- * Derived from drivers/spi/spi-dw-pci.c
- *   Copyright (c) 2009, 2014 Intel Corporation.
+ * Copyright (c) 2019-2024 Phytium Technology Co., Ltd.
  */
 
 #include <linux/clk.h>
@@ -26,6 +23,7 @@
 #include "spi-phytium.h"
 
 #define DRIVER_NAME "phytium_spi_pci"
+#define DRIVER_VERSION	"1.0.0"
 
 static int phytium_spi_pci_probe(struct pci_dev *pdev,
 			    const struct pci_device_id *id)
@@ -88,16 +86,14 @@ static void phytium_spi_pci_remove(struct pci_dev *pdev)
 #ifdef CONFIG_PM_SLEEP
 static int spi_suspend(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct phytium_spi *fts = spi_master_get_devdata(master);
+	struct phytium_spi *fts = dev_get_drvdata(dev);
 
 	return phytium_spi_suspend_host(fts);
 }
 
 static int spi_resume(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct phytium_spi *fts = spi_master_get_devdata(master);
+	struct phytium_spi *fts = dev_get_drvdata(dev);
 
 	return phytium_spi_resume_host(fts);
 }
@@ -109,6 +105,7 @@ static const struct pci_device_id phytium_device_pci_tbl[] = {
 	{ PCI_VDEVICE(PHYTIUM, 0xdc2c) },
 	{},
 };
+MODULE_DEVICE_TABLE(pci, phytium_device_pci_tbl);
 
 static struct pci_driver phytium_spi_pci_driver = {
 	.name		= DRIVER_NAME,
@@ -125,3 +122,4 @@ module_pci_driver(phytium_spi_pci_driver);
 MODULE_AUTHOR("Yiqun Zhang <zhangyiqun@phytium.com.cn>");
 MODULE_DESCRIPTION("PCI Driver for Phytium SPI controller core");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(DRIVER_VERSION);
