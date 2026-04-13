@@ -90,6 +90,21 @@
 	_ASM_EXTABLE_KACCESS_ME_SAFE(\insn, \fixup)
 	.endm
 
+/*
+ * Emit an entry into the machine check exception table
+ */
+#ifdef CONFIG_ARCH_HAS_MC_EXTABLE
+	.macro		_asm_mc_extable, from, to
+	.pushsection	__mc_ex_table, "a"
+	.align		3
+	.long		(\from - .), (\to - .)
+	.popsection
+	.endm
+#else
+	.macro		_asm_mc_extable, from, to
+	.endm
+#endif
+
 #else /* __ASSEMBLY__ */
 
 #include <linux/stringify.h>
@@ -103,6 +118,19 @@
 	".short		(" data ")\n"			\
 	".popsection\n"
 
+#ifdef CONFIG_ARCH_HAS_MC_EXTABLE
+#define __ASM_MC_EXTABLE(insn, fixup, type, data)	\
+	".pushsection	__mc_ex_table, \"a\"\n"		\
+	".align		2\n"				\
+	".long		((" insn ") - .)\n"		\
+	".long		((" fixup ") - .)\n"		\
+	".short		(" type ")\n"			\
+	".short		(" data ")\n"			\
+	".popsection\n"
+#else
+#define __ASM_MC_EXTABLE(insn, fixup, type, data)
+#endif
+
 #define EX_DATA_REG(reg, gpr)						\
 	"((.L__gpr_num_" #gpr ") << " __stringify(EX_DATA_REG_##reg##_SHIFT) ")"
 
@@ -113,7 +141,14 @@
 			  "("						\
 			    EX_DATA_REG(ERR, err) " | "			\
 			    EX_DATA_REG(ZERO, zero)			\
+			  ")")						\
+	__ASM_MC_EXTABLE(#insn, #fixup, 				\
+			  __stringify(EX_TYPE_UACCESS_ERR_ZERO),	\
+			  "("						\
+			    EX_DATA_REG(ERR, err) " | "			\
+			    EX_DATA_REG(ZERO, zero)			\
 			  ")")
+
 
 #define _ASM_EXTABLE_KACCESS_ERR_ZERO(insn, fixup, err, zero)		\
 	__DEFINE_ASM_GPR_NUMS						\

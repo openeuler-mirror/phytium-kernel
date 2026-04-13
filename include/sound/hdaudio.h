@@ -351,6 +351,7 @@ struct hdac_bus {
 	bool not_use_interrupts:1;	/* prohibiting the RIRB IRQ */
 	bool access_sdnctl_in_dword:1;	/* accessing the sdnctl register by dword */
 	bool hygon_dword_access:1;
+	bool cmd_resend;		/* command resend */
 
 	int poll_count;
 

@@ -27,6 +27,7 @@ void log_non_standard_event(const guid_t *sec_type,
 
 #ifdef CONFIG_RAS_ARM_EVENT_INFO
 void log_arm_hw_error(struct cper_sec_proc_arm *err, const u8 sev);
+void log_phyt_err_event(struct cper_sec_phyt_err *err, const u8 sev);
 #else
 void log_arm_hw_error(struct cper_sec_proc_arm *err);
 
@@ -42,6 +43,8 @@ log_non_standard_event(const guid_t *sec_type,
 #ifdef CONFIG_RAS_ARM_EVENT_INFO
 static inline void
 log_arm_hw_error(struct cper_sec_proc_arm *err, const u8 sev) { return; }
+static inline void
+log_phyt_err_event(struct cper_sec_phyt_err *err, const u8 sev) { return; }
 #else
 static inline void
 log_arm_hw_error(struct cper_sec_proc_arm *err) { return; }

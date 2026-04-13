@@ -432,6 +432,9 @@ static inline void __flush_tlb_range_nosync(struct vm_area_struct *vma,
 
 	if (__flush_tlb_range_limit_excess(start, end, pages, stride)) {
 		flush_tlb_mm(vma->vm_mm);
+#ifdef CONFIG_ARCH_PHYTIUM
+		mmu_notifier_arch_invalidate_secondary_tlbs(vma->vm_mm, start, end);
+#endif
 		return;
 	}
 

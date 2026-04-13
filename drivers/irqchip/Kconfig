@@ -104,12 +104,10 @@ config ARM_GIC_V3_ITS_FSL_MC
 	default ARM_GIC_V3_ITS
 
 config ARM_GIC_PHYTIUM_2500
-    bool
-    select IRQ_DOMAIN
-    select IRQ_DOMAIN_HIERARCHY
-    select PARTITION_PERCPU
-    select GENERIC_IRQ_EFFECTIVE_AFF_MASK
-    select GENERIC_MSI_IRQ_DOMAIN
+	bool
+	select IRQ_DOMAIN_HIERARCHY
+	select PARTITION_PERCPU
+	select GENERIC_IRQ_EFFECTIVE_AFF_MASK
 
 config ARM_NVIC
 	bool
@@ -213,13 +211,6 @@ config HISILICON_IRQ_MBIGEN
 	bool
 	select ARM_GIC_V3
 	select ARM_GIC_V3_ITS
-
-config IRQ_MBIGEN_ENABLE_SPI
-	bool "MBIGEN enable generating SPIs"
-	depends on HISILICON_IRQ_MBIGEN
-	default n
-	help
-	  Use the first 64-pins of each MBIGEN chip to generate SPIs.
 
 config IMGPDC_IRQ
 	bool
@@ -740,5 +731,13 @@ config SUNPLUS_SP7021_INTC
 	  SP7021 SoC has 2 Chips: C-Chip & P-Chip. This is used as a
 	  chained controller, routing all interrupt source in P-Chip to
 	  the primary controller on C-Chip.
+
+config PHYTIUM_IXIC
+	bool "Phytium SoC PCI Legacy Interrupt Controller"
+	depends on ARCH_PHYTIUM
+	select IRQ_DOMAIN
+	select IRQ_DOMAIN_HIERARCHY
+	help
+	  This enables support PCI Legacy Interrupt on Phytium SoC.
 
 endmenu

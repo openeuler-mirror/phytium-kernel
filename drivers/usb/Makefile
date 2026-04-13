@@ -17,6 +17,9 @@ obj-$(CONFIG_USB_CDNS_SUPPORT)	+= cdns3/
 obj-$(CONFIG_USB_CDNS3)		+= cdns3/
 obj-$(CONFIG_USB_CDNSP_PCI)	+= cdns3/
 
+obj-$(CONFIG_USB_PHYTIUM)	+= phytium/
+obj-$(CONFIG_USB_PHYTIUM_V2)	+= phytium_usb_v2/
+
 obj-$(CONFIG_USB_FOTG210)	+= fotg210/
 
 obj-$(CONFIG_USB_MON)		+= mon/

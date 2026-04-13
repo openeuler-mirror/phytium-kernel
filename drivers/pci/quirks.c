@@ -31,6 +31,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/suspend.h>
 #include <linux/switchtec.h>
+#include <linux/crash_dump.h>
 #include "pci.h"
 
 /*
@@ -4132,7 +4133,7 @@ static int nvme_disable_and_flr(struct pci_dev *dev, bool probe)
 	    pcie_reset_flr(dev, PCI_RESET_PROBE) || !pci_resource_start(dev, 0))
 		return -ENOTTY;
 
-	if (probe)
+	if (probe & !is_kdump_kernel())
 		return 0;
 
 	bar = pci_iomap(dev, 0, NVME_REG_CC + sizeof(cfg));
@@ -4280,6 +4281,7 @@ static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 	{ PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_IVB_M2_VGA,
 		reset_ivb_igd },
 	{ PCI_VENDOR_ID_SAMSUNG, 0xa804, nvme_disable_and_flr },
+	{ PCI_VENDOR_ID_SAMSUNG, 0xa809, nvme_disable_and_flr },
 	{ PCI_VENDOR_ID_INTEL, 0x0953, delay_250ms_after_flr },
 	{ PCI_VENDOR_ID_INTEL, 0x0a54, delay_250ms_after_flr },
 	{ PCI_VENDOR_ID_SOLIDIGM, 0xf1ac, delay_250ms_after_flr },
@@ -5270,6 +5272,10 @@ static const struct pci_dev_acs_enabled {
 	{ PCI_VENDOR_ID_MUCSE, 0x1c83, pci_quirk_mf_endpoint_acs },
 	{ PCI_VENDOR_ID_LOONGSON, 0x3c09, pci_quirk_xgene_acs},
 	{ PCI_VENDOR_ID_LOONGSON, 0x3c19, pci_quirk_xgene_acs},
+	/* Phytium Technology */
+	{ 0x10b5, PCI_ANY_ID, pci_quirk_xgene_acs },
+	{ 0x17cd, PCI_ANY_ID, pci_quirk_xgene_acs },
+	{ 0x1db7, PCI_ANY_ID, pci_quirk_xgene_acs },
 	{ 0 }
 };
 
@@ -5662,6 +5668,7 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0142, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0144, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0420, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0422, quirk_no_ext_tags);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PHYTIUM, 0xdc3a, quirk_no_ext_tags);
 
 #ifdef CONFIG_PCI_ATS
 static void quirk_no_ats(struct pci_dev *pdev)

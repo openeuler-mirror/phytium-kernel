@@ -1071,6 +1071,15 @@ config SND_SOC_ES8328_SPI
 	depends on SPI_MASTER
 	select SND_SOC_ES8328
 
+config SND_SOC_ES8336
+	tristate "Everest Semi ES8336 CODEC"
+	depends on I2C
+	select GPIO_PHYTIUM_PCI
+
+config SND_SOC_ES8388
+	tristate "Everest Semi ES8388 CODEC"
+	depends on I2C
+
 config SND_SOC_GTM601
 	tristate 'GTM601 UMTS modem audio codec'
 
@@ -1125,6 +1134,10 @@ config SND_SOC_LOCHNAGAR_SC
 	help
 	  This driver support the sound card functionality of the Cirrus
 	  Logic Lochnagar audio development board.
+
+config SND_SOC_MA1026
+	tristate "Cubiclattice MA1026 CODEC"
+	depends on I2C
 
 config SND_SOC_MADERA
 	tristate
@@ -1369,6 +1382,11 @@ config SND_SOC_PEB2466
 
 	  To compile this driver as a module, choose M here: the module
 	  will be called snd-soc-peb2466.
+
+config SND_SOC_PHYTIUM_CODEC_V2
+	tristate "Phytium Codec V2 driver"
+	help
+	  Select Y if you want to add Phytium codec V2 driver.
 
 config SND_SOC_RK3328
 	tristate "Rockchip RK3328 audio CODEC"

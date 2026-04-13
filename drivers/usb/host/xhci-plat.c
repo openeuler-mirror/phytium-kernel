@@ -21,9 +21,37 @@
 #include <linux/usb/of.h>
 #include <linux/reset.h>
 
+#ifdef CONFIG_ARCH_PHYTIUM
+#include <linux/workqueue.h>
+#endif
+
 #include "xhci.h"
 #include "xhci-plat.h"
 #include "xhci-mvebu.h"
+
+#ifdef CONFIG_ARCH_PHYTIUM
+static struct workqueue_struct *xhci_wq;
+static struct workqueue_struct *get_xhci_wq(void)
+{
+	return xhci_wq;
+}
+
+static int xhci_generic_plat_probe(struct platform_device *pdev);
+
+static void xhci_delay_work_func(struct work_struct *work)
+{
+	struct xhci_hcd *xhci;
+	struct usb_hcd *hcd;
+	struct platform_device *pdev;
+
+	xhci = container_of(to_delayed_work(work), struct xhci_hcd, xhci_delay_wq);
+	hcd = xhci_to_hcd(xhci);
+	pdev = to_platform_device(hcd->self.controller);
+
+	xhci_plat_remove(pdev);
+	xhci_generic_plat_probe(pdev);
+}
+#endif
 
 static struct hc_driver __read_mostly xhci_plat_hc_driver;
 
@@ -100,6 +128,11 @@ static int xhci_plat_start(struct usb_hcd *hcd)
 	return xhci_run(hcd);
 }
 
+static const struct xhci_plat_priv xhci_plat_phytium_pe220x = {
+	.quirks = XHCI_RESET_ON_RESUME | XHCI_S1_SUSPEND_WAKEUP |
+		XHCI_BROKEN_STREAMS,
+};
+
 #ifdef CONFIG_OF
 static const struct xhci_plat_priv xhci_plat_marvell_armada = {
 	.init_quirk = xhci_mvebu_mbus_init_quirk,
@@ -133,6 +166,9 @@ static const struct of_device_id usb_xhci_of_match[] = {
 	}, {
 		.compatible = "brcm,bcm7445-xhci",
 		.data = &xhci_plat_brcm,
+	}, {
+		.compatible = "phytium,pe220x-xhci",
+		.data = &xhci_plat_phytium_pe220x,
 	},
 	{},
 };
@@ -177,8 +213,17 @@ int xhci_plat_probe(struct platform_device *pdev, struct device *sysdev, const s
 		ret = -ENOMEM;
 		goto disable_runtime;
 	}
-
+#ifdef CONFIG_ARCH_PHYTIUM
+	if (is_pe220x() || is_pd2408()) {
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+		hcd->regs = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	} else {
+		hcd->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
+	}
+#else
 	hcd->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
+#endif
+
 	if (IS_ERR(hcd->regs)) {
 		ret = PTR_ERR(hcd->regs);
 		goto put_hcd;
@@ -313,7 +358,8 @@ int xhci_plat_probe(struct platform_device *pdev, struct device *sysdev, const s
 	}
 
 	usb3_hcd = xhci_get_usb3_hcd(xhci);
-	if (usb3_hcd && HCC_MAX_PSA(xhci->hcc_params) >= 4)
+	if (usb3_hcd && HCC_MAX_PSA(xhci->hcc_params) >= 4 &&
+			!(xhci->quirks & XHCI_BROKEN_STREAMS))
 		usb3_hcd->can_do_streams = 1;
 
 	if (xhci->shared_hcd) {
@@ -324,6 +370,13 @@ int xhci_plat_probe(struct platform_device *pdev, struct device *sysdev, const s
 
 	device_enable_async_suspend(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
+
+#ifdef CONFIG_ARCH_PHYTIUM
+	if (is_pe220x() || is_pd2408()) {
+		INIT_DELAYED_WORK(&xhci->xhci_delay_wq, xhci_delay_work_func);
+		xhci->get_xhci_wq = get_xhci_wq;
+	}
+#endif
 
 	/*
 	 * Prevent runtime pm from being on as default, users should enable
@@ -394,7 +447,9 @@ static int xhci_generic_plat_probe(struct platform_device *pdev)
 			return ret;
 	}
 
-	if (pdev->dev.of_node)
+	if (has_acpi_companion(&pdev->dev))
+		priv_match = acpi_device_get_match_data(&pdev->dev);
+	else if (pdev->dev.of_node)
 		priv_match = of_device_get_match_data(&pdev->dev);
 	else
 		priv_match = dev_get_platdata(&pdev->dev);
@@ -554,6 +609,7 @@ EXPORT_SYMBOL_GPL(xhci_plat_pm_ops);
 static const struct acpi_device_id usb_xhci_acpi_match[] = {
 	/* XHCI-compliant USB Controller */
 	{ "PNP0D10", },
+	{ "PHYT0039", (kernel_ulong_t)&xhci_plat_phytium_pe220x },
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, usb_xhci_acpi_match);
@@ -574,6 +630,13 @@ MODULE_ALIAS("platform:xhci-hcd");
 
 static int __init xhci_plat_init(void)
 {
+#ifdef CONFIG_ARCH_PHYTIUM
+	if (is_pe220x() || is_pd2408()) {
+		xhci_wq = create_workqueue("xhci_wq");
+		if (!xhci_wq)
+			return -ENOMEM;
+	}
+#endif
 	xhci_init_driver(&xhci_plat_hc_driver, &xhci_plat_overrides);
 	return platform_driver_register(&usb_generic_xhci_driver);
 }
@@ -581,6 +644,10 @@ module_init(xhci_plat_init);
 
 static void __exit xhci_plat_exit(void)
 {
+#ifdef CONFIG_ARCH_PHYTIUM
+	if (is_pe220x() || is_pd2408())
+		destroy_workqueue(xhci_wq);
+#endif
 	platform_driver_unregister(&usb_generic_xhci_driver);
 }
 module_exit(xhci_plat_exit);

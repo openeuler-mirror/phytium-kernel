@@ -56,6 +56,11 @@
 #include <asm/mmu_context.h>
 
 #include "../mm/internal.h"
+#ifdef CONFIG_ARCH_PHYTIUM
+#include <asm/phytium_cputype.h>
+enum phyt_soc_type phyt_soc_type_t;
+EXPORT_SYMBOL(phyt_soc_type_t);
+#endif
 
 static int num_standard_resources;
 static struct resource *standard_resources;
@@ -395,6 +400,9 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
 			   FW_BUG "Booted with MMU enabled!");
 	}
 
+#ifdef CONFIG_ARCH_PHYTIUM
+	phyt_soc_type_init();
+#endif
 	arm64_memblock_init();
 
 	paging_init();

@@ -104,6 +104,17 @@ config PHANTOM
 	  If you choose to build module, its name will be phantom. If unsure,
 	  say N here.
 
+config PHYTIUM_SNOOP_CTRL
+        tristate "Phytium snoop controller support"
+        depends on ARCH_PHYTIUM && REGMAP && MFD_SYSCON
+	default n
+        help
+	  Say Y here if you want BMC to snoop 80h port.
+
+          Provides a driver to control the phytium snoop interface which
+          allows the BMC to listen on and save the data written by the
+	  host to an arbitrary I/O port.
+
 config TIFM_CORE
 	tristate "TI Flash Media interface support"
 	depends on PCI
@@ -579,6 +590,17 @@ config TPS6594_PFSM
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called tps6594-pfsm.
+
+config PHYTIUM_POWER_MONITOR
+	tristate "Phytium power monitor support"
+	depends on ARCH_PHYTIUM
+	default m
+	help
+	  Select this option will enable the power monitor driver in
+	  Phytium platform, allowing user to obtain power information
+	  in SoC through procfs, such as power consumption, voltage.
+
+	  If unsure, say N.
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"

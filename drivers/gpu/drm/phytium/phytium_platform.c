@@ -5,10 +5,15 @@
  * Copyright (C) 2021-2023, Phytium Technology Co., Ltd.
  */
 
+#include "drm/drm_aperture.h"
 #include <linux/of_device.h>
+#include <linux/of_address.h>
 #include <linux/acpi.h>
 #include <drm/drm_drv.h>
 #include <linux/dma-mapping.h>
+#include <linux/pwm.h>
+#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include "phytium_display_drv.h"
 #include "phytium_platform.h"
 #include "phytium_dp.h"
@@ -19,13 +24,29 @@
 int phytium_platform_carveout_mem_init(struct platform_device *pdev,
 						      struct phytium_display_private *priv)
 {
-	struct resource *res;
+	struct device_node *np;
+	struct resource res;
+	struct resource *pres;
 	int ret = 0;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (res) {
-		priv->pool_size = resource_size(res);
-		priv->pool_phys_addr = res->start;
+	if (pdev->dev.of_node) {
+		np = of_parse_phandle(pdev->dev.of_node, "memory-region", 0);
+		if(!np)
+			goto next;
+		ret = of_address_to_resource(np, 0, &res);
+		if(ret)
+			DRM_ERROR("No memory address assigned to the region\n");
+		else {
+			priv->pool_size = resource_size(&res);
+			priv->pool_phys_addr = res.start;
+		}
+	}
+
+next:
+	pres = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (pres) {
+		priv->pool_size = resource_size(pres);
+		priv->pool_phys_addr = pres->start;
 	}
 
 	if ((priv->pool_phys_addr != 0) && (priv->pool_size != 0)) {
@@ -108,6 +129,29 @@ phytium_platform_private_init(struct platform_device *pdev)
 			dev_err(&pdev->dev, "missing edp_mask property from dts\n");
 			goto failed;
 		}
+		if (priv->info.edp_mask) {
+			priv->info.pwm = devm_pwm_get(&pdev->dev, NULL);
+			if (IS_ERR(priv->info.pwm)) {
+				dev_err(&pdev->dev, "Failed to request PWM device: %ld\n",
+							PTR_ERR(priv->info.pwm));
+				goto failed;
+			}
+			priv->edp_bl_en = gpiod_get(&pdev->dev, "edp-bl-en", GPIOD_OUT_HIGH);
+			if (IS_ERR(priv->edp_bl_en)) {
+				dev_err(&pdev->dev, "Failed to get edp_en gpio\n");
+				priv->edp_bl_en = NULL;
+				goto failed;
+			}
+			priv->edp_power_en = gpiod_get(&pdev->dev, "edp-power-en", GPIOD_OUT_HIGH);
+			if (IS_ERR(priv->edp_power_en)) {
+				dev_err(&pdev->dev, "Failed to get edp_pwr_en gpio\n");
+				priv->edp_power_en = NULL;
+				goto failed_gpio_power_init;
+			}
+			// set GPIO pin output
+			gpiod_direction_output(priv->edp_power_en, 0);
+			gpiod_direction_output(priv->edp_bl_en, 0);
+		}
 	} else if (has_acpi_companion(&pdev->dev)) {
 		phytium_info = (struct phytium_device_info *)acpi_device_get_match_data(&pdev->dev);
 		if (!phytium_info) {
@@ -126,6 +170,29 @@ phytium_platform_private_init(struct platform_device *pdev)
 		if (ret < 0) {
 			dev_err(&pdev->dev, "missing edp_mask property from acpi\n");
 			goto failed;
+		}
+		if (priv->info.edp_mask) {
+			priv->info.pwm = devm_pwm_get(&pdev->dev, NULL);
+			if (IS_ERR(priv->info.pwm)) {
+				dev_err(&pdev->dev, "Failed to request PWM device: %ld\n",
+						PTR_ERR(priv->info.pwm));
+				goto failed;
+			}
+			priv->edp_bl_en = gpiod_get(&pdev->dev, "edp-bl-en", GPIOD_OUT_HIGH);
+			if (IS_ERR(priv->edp_bl_en)) {
+				dev_err(&pdev->dev, "Failed to get edp_en gpio\n");
+				priv->edp_bl_en = NULL;
+				goto failed;
+			}
+			priv->edp_power_en = gpiod_get(&pdev->dev, "edp-power-en", GPIOD_OUT_HIGH);
+			if (IS_ERR(priv->edp_power_en)) {
+				dev_err(&pdev->dev, "Failed to get edp_pwr_en gpio\n");
+				priv->edp_power_en = NULL;
+				goto failed_gpio_power_init;
+			}
+			// set GPIO pin output
+			gpiod_direction_output(priv->edp_power_en, 0);
+			gpiod_direction_output(priv->edp_bl_en, 0);
 		}
 	}
 
@@ -157,6 +224,8 @@ phytium_platform_private_init(struct platform_device *pdev)
 
 	return priv;
 
+failed_gpio_power_init:
+	gpiod_put(priv->edp_bl_en);
 failed:
 	devm_kfree(&pdev->dev, platform_priv);
 exit:
@@ -169,6 +238,11 @@ static void phytium_platform_private_fini(struct platform_device *pdev)
 	struct phytium_display_private *priv = dev->dev_private;
 	struct phytium_platform_private *platform_priv = to_platform_priv(priv);
 
+	if (priv->edp_power_en)
+		gpiod_put(priv->edp_power_en);
+	if (priv->edp_bl_en)
+		gpiod_put(priv->edp_bl_en);
+
 	devm_kfree(&pdev->dev, platform_priv);
 }
 
@@ -176,7 +250,24 @@ static int phytium_platform_probe(struct platform_device *pdev)
 {
 	struct phytium_display_private *priv = NULL;
 	struct drm_device *dev = NULL;
+	struct phytium_device_info *phytium_info = NULL;
 	int ret = 0;
+
+	if (pdev->dev.of_node) {
+		phytium_info = (struct phytium_device_info *)of_device_get_match_data(&pdev->dev);
+		if (phytium_info) {
+			if (phytium_info->platform_mask & BIT(PHYTIUM_PLATFORM_PE220X))
+				phytium_display_drm_driver.name = "pe220x";
+		}
+	} else if (has_acpi_companion(&pdev->dev)) {
+		phytium_info = (struct phytium_device_info *)acpi_device_get_match_data(&pdev->dev);
+		if (phytium_info) {
+			if (phytium_info->platform_mask & BIT(PHYTIUM_PLATFORM_PE220X))
+				phytium_display_drm_driver.name = "pe220x";
+		}
+	}
+
+	drm_aperture_remove_framebuffers(&phytium_display_drm_driver);
 
 	dev = drm_dev_alloc(&phytium_display_drm_driver, &pdev->dev);
 	if (IS_ERR(dev)) {
@@ -270,6 +361,8 @@ static const struct phytium_device_info pe220x_info = {
 	.vdisplay_max = PE220X_DC_VDISPLAY_MAX,
 	.address_mask = PE220X_DC_ADDRESS_MASK,
 	.backlight_max = PE220X_DP_BACKLIGHT_MAX,
+	.backlight_min = PE220X_DP_BACKLIGHT_MIN,
+	.bmc_mode = false,
 };
 
 static const struct of_device_id display_of_match[] = {
@@ -279,6 +372,7 @@ static const struct of_device_id display_of_match[] = {
 	},
 	{ }
 };
+MODULE_DEVICE_TABLE(of, display_of_match);
 
 #ifdef CONFIG_ACPI
 static const struct acpi_device_id display_acpi_ids[] = {
