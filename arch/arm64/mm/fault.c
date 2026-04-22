@@ -738,6 +738,9 @@ static bool arm64_do_kernel_sea(void __user *addr, unsigned int esr,
 	if (!sysctl_machine_check_safe)
 		return false;
 
+	if (!sysctl_machine_check_safe)
+		return false;
+
 	if (user_mode(regs))
 		return false;
 

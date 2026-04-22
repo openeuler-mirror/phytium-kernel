@@ -17,6 +17,9 @@
 #include <linux/kernel.h>
 #include <linux/usb/hcd.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
+#ifdef CONFIG_ARCH_PHYTIUM
+#include <asm/phytium_cputype.h>
+#endif
 
 /* Code sharing between pci-quirks and xhci hcd */
 #include	"xhci-ext-caps.h"
@@ -239,6 +242,8 @@ struct xhci_op_regs {
 /* USBSTS - USB status - status bitmasks */
 /* HC not running - set to 1 when run/stop bit is cleared. */
 #define STS_HALT	XHCI_STS_HALT
+/* event wakeup interrupt */
+#define STS_WAKEUP	(1 << 1)
 /* serious error, e.g. PCI parity error.  The HC will clear the run/stop bit. */
 #define STS_FATAL	(1 << 2)
 /* event interrupt - clear this prior to clearing any IP flags in IR set*/
@@ -1805,6 +1810,10 @@ struct xhci_hcd {
 	struct list_head        cmd_list;
 	unsigned int		cmd_ring_reserved_trbs;
 	struct delayed_work	cmd_timer;
+#ifdef CONFIG_ARCH_PHYTIUM
+	struct delayed_work	xhci_delay_wq;
+	struct workqueue_struct* (*get_xhci_wq)(void);
+#endif
 	struct completion	cmd_ring_stop_completion;
 	struct xhci_command	*current_cmd;
 	struct xhci_ring	*event_ring;
@@ -1905,10 +1914,11 @@ struct xhci_hcd {
 #define XHCI_SG_TRB_CACHE_SIZE_QUIRK	BIT_ULL(39)
 #define XHCI_NO_SOFT_RETRY	BIT_ULL(40)
 #define XHCI_ZHAOXIN_HOST	BIT_ULL(41)
-#define XHCI_ZHAOXIN_TRB_FETCH	BIT_ULL(42)
+#define XHCI_TRB_OVERFETCH	BIT_ULL(42)
 #define XHCI_EP_CTX_BROKEN_DCS	BIT_ULL(43)
 #define XHCI_SUSPEND_RESUME_CLKS	BIT_ULL(44)
 #define XHCI_RESET_TO_DEFAULT	BIT_ULL(45)
+#define XHCI_S1_SUSPEND_WAKEUP	BIT_ULL(47)
 
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;

@@ -87,7 +87,12 @@ phytium_drm_fbdev_create(struct drm_fb_helper *helper, struct drm_fb_helper_surf
 	fbi->fbops = &phytium_fbdev_ops;
 
 	fb = helper->fb;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
+	drm_fb_helper_fill_fix(fbi, fb->pitches[0], fb->format->depth);
+	drm_fb_helper_fill_var(fbi, helper, sizes->fb_width, sizes->fb_height);
+#else
 	drm_fb_helper_fill_info(fbi, helper, sizes);
+#endif
 
 	offset = fbi->var.xoffset * bytes_per_pixel;
 	offset += fbi->var.yoffset * fb->pitches[0];
@@ -121,14 +126,31 @@ int phytium_drm_fbdev_init(struct drm_device *dev)
 	helper = &priv->fbdev_helper;
 	drm_fb_helper_prepare(dev, helper, &phytium_drm_fb_helper_funcs);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
+	ret = drm_fb_helper_init(dev, helper, PHYTIUM_MAX_CONNECTOR);
+#else
 	ret = drm_fb_helper_init(dev, helper);
+#endif
 	if (ret < 0) {
 		DRM_DEV_ERROR(dev->dev, "Failed to initialize drm fb helper -ret %d\n", ret);
 		return ret;
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
+	ret = drm_fb_helper_single_add_all_connectors(helper);
+	if (ret < 0) {
+		DRM_DEV_ERROR(dev->dev, "Failed to add connectors - %d/\n", ret);
+		goto err_drm_fb_helper_fini;
+	}
+#endif
 	ret = drm_fb_helper_initial_config(helper, 32);
-	return 0;
+	return ret;
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
+err_drm_fb_helper_fini:
+	drm_fb_helper_fini(helper);
+	return ret;
+#endif
 }
 
 void phytium_drm_fbdev_fini(struct drm_device *dev)

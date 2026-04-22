@@ -33,7 +33,11 @@ static void phytium_fb_destroy(struct drm_framebuffer *fb)
 	for (i = 0; i < num_planes; i++) {
 		obj = &phytium_fb->phytium_gem_obj[i]->base;
 		if (obj)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 			drm_gem_object_put(obj);
+#else
+			drm_gem_object_unreference_unlocked(obj);
+#endif
 	}
 
 	drm_framebuffer_cleanup(fb);
@@ -103,7 +107,11 @@ phytium_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 		}
 
 		if (obj->size < size) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 			drm_gem_object_put(obj);
+#else
+			drm_gem_object_unreference_unlocked(obj);
+#endif
 			ret = -EINVAL;
 			goto error;
 		}
@@ -125,7 +133,11 @@ phytium_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	return &phytium_fb->base;
 error:
 	for (i--; i >= 0; i--)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 		drm_gem_object_put(&phytium_gem_obj[i]->base);
+#else
+		drm_gem_object_unreference_unlocked(&phytium_gem_obj[i]->base);
+#endif
 
 	return ERR_PTR(ret);
 }

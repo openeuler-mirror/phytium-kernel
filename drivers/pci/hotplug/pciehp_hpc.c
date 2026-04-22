@@ -592,7 +592,7 @@ static irqreturn_t pciehp_isr(int irq, void *dev_id)
 	 * in the Slot Control register (PCIe r4.0, sec 6.7.3.4).
 	 */
 	if (pdev->current_state == PCI_D3cold ||
-	    (!(ctrl->slot_ctrl & PCI_EXP_SLTCTL_HPIE) && !pciehp_poll_mode))
+			(!(ctrl->slot_ctrl & PCI_EXP_SLTCTL_HPIE) && !pciehp_poll_mode))
 		return IRQ_NONE;
 
 	/*
@@ -691,7 +691,13 @@ static irqreturn_t pciehp_ist(int irq, void *dev_id)
 	struct pci_dev *pdev = ctrl_dev(ctrl);
 	struct pci_dev *rpdev = pdev->rpdev;
 	irqreturn_t ret;
+#ifdef CONFIG_ARCH_PHYTIUM
+	u32 events, buses;
+	u16 slot_ctrl;
+	bool link_active;
+#else
 	u32 events;
+#endif
 
 	ctrl->ist_running = true;
 	pci_config_pm_runtime_get(pdev);
@@ -710,6 +716,23 @@ static irqreturn_t pciehp_ist(int irq, void *dev_id)
 		ret = IRQ_NONE;
 		goto out;
 	}
+
+#ifdef CONFIG_ARCH_PHYTIUM
+	if(ctrl->state == ON_STATE) {
+		pci_read_config_dword(pdev, PCI_PRIMARY_BUS, &buses);
+		pcie_capability_read_word(pdev, PCI_EXP_SLTCTL, &slot_ctrl);
+		ctrl->buses = buses;
+		ctrl->slot_ctrl_t = slot_ctrl;
+                ctrl_dbg(ctrl, "Ctrl buses=0x%x, slot_ctrl=0x%x\n",
+				ctrl->buses, ctrl->slot_ctrl_t);
+        }
+
+	mdelay(1000);
+
+	link_active = pciehp_check_link_active(ctrl);
+	if((ctrl->state == ON_STATE) && (link_active == false))
+		events |= PCI_EXP_SLTSTA_DLLSC;
+#endif
 
 	/* Check Attention Button Pressed */
 	if (events & PCI_EXP_SLTSTA_ABP) {
@@ -805,7 +828,6 @@ static irqreturn_t pciehp_ist(int irq, void *dev_id)
 		}
 	}
 	up_read(&ctrl->reset_lock);
-
 	ret = IRQ_HANDLED;
 out:
 	pci_config_pm_runtime_put(pdev);

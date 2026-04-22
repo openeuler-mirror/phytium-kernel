@@ -48,9 +48,6 @@ static int macb_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	res[0].end = pci_resource_end(pdev, 0);
 	res[0].name = PCI_DRIVER_NAME;
 	res[0].flags = IORESOURCE_MEM;
-	res[1].start = pci_irq_vector(pdev, 0);
-	res[1].name = PCI_DRIVER_NAME;
-	res[1].flags = IORESOURCE_IRQ;
 
 	dev_info(&pdev->dev, "EMAC physical base addr: %pa\n",
 		 &res[0].start);
@@ -84,6 +81,10 @@ static int macb_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	plat_info.data = &plat_data;
 	plat_info.size_data = sizeof(plat_data);
 	plat_info.dma_mask = pdev->dma_mask;
+
+	res[1].start = pci_irq_vector(pdev, 0);
+	res[1].name = PCI_DRIVER_NAME;
+	res[1].flags = IORESOURCE_IRQ;
 
 	/* register platform device */
 	plat_dev = platform_device_register_full(&plat_info);

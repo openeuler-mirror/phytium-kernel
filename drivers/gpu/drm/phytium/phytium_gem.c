@@ -6,6 +6,7 @@
 
 #include <linux/dma-buf.h>
 #include <linux/vmalloc.h>
+#include <linux/version.h>
 #include <linux/mm_types.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
@@ -35,7 +36,8 @@ int phytium_memory_pool_alloc(struct phytium_display_private *priv, void **pvadd
 
 void phytium_memory_pool_free(struct phytium_display_private *priv, void *vaddr, uint64_t size)
 {
-	gen_pool_free(priv->memory_pool, (unsigned long)vaddr, size);
+	if (priv->memory_pool)
+		gen_pool_free(priv->memory_pool, (unsigned long)vaddr, size);
 }
 
 int phytium_memory_pool_init(struct device *dev, struct phytium_display_private *priv)
@@ -68,7 +70,8 @@ failed_create_pool:
 
 void phytium_memory_pool_fini(struct device *dev, struct phytium_display_private *priv)
 {
-	gen_pool_destroy(priv->memory_pool);
+	if (priv->memory_pool)
+		gen_pool_destroy(priv->memory_pool);
 }
 
 struct sg_table *
@@ -94,7 +97,7 @@ phytium_gem_prime_get_sg_table(struct drm_gem_object *obj)
 			DRM_ERROR("failed to allocate sg\n");
 			goto sgt_free;
 		}
-		page = phys_to_page(phytium_gem_obj->phys_addr);
+		page = pfn_to_page(__phys_to_pfn(phytium_gem_obj->phys_addr));
 		sg_set_page(sgt->sgl, page, PAGE_ALIGN(phytium_gem_obj->size), 0);
 	} else if (phytium_gem_obj->memory_type == MEMORY_TYPE_SYSTEM_UNIFIED) {
 		ret = dma_get_sgtable_attrs(dev->dev, sgt, phytium_gem_obj->vaddr,
@@ -166,7 +169,7 @@ void *phytium_gem_prime_vmap(struct drm_gem_object *obj)
 
 void phytium_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr)
 {
-
+	return;
 }
 
 int phytium_gem_prime_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma)
@@ -410,6 +413,7 @@ int phytium_gem_dumb_destroy(struct drm_file *file, struct drm_device *dev, uint
 	return drm_gem_dumb_destroy(file, dev, handle);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 static const struct vm_operations_struct phytium_vm_ops = {
 	.open   = drm_gem_vm_open,
 	.close  = drm_gem_vm_close,
@@ -422,6 +426,7 @@ static const struct drm_gem_object_funcs phytium_drm_gem_object_funcs = {
 	.vunmap = phytium_gem_prime_vunmap,
 	.vm_ops = &phytium_vm_ops,
 };
+#endif
 
 struct phytium_gem_object *phytium_gem_create_object(struct drm_device *dev, unsigned long size)
 {
@@ -443,6 +448,8 @@ struct phytium_gem_object *phytium_gem_create_object(struct drm_device *dev, uns
 		goto failed_object_init;
 	}
 
+	phytium_gem_obj->base.funcs = &phytium_drm_gem_object_funcs;
+
 	if (priv->support_memory_type & (MEMORY_TYPE_VRAM_WC | MEMORY_TYPE_VRAM_DEVICE)) {
 		ret = phytium_memory_pool_alloc(priv, &phytium_gem_obj->vaddr,
 						&phytium_gem_obj->phys_addr, size);
@@ -460,7 +467,7 @@ struct phytium_gem_object *phytium_gem_create_object(struct drm_device *dev, uns
 			DRM_ERROR("fail to allocate carveout memory with size %lx\n", size);
 			goto failed_dma_alloc;
 		}
-		page = phys_to_page(phytium_gem_obj->phys_addr);
+		page = pfn_to_page(__phys_to_pfn(phytium_gem_obj->phys_addr));
 		phytium_gem_obj->iova = dma_map_page(dev->dev, page, 0, size, DMA_TO_DEVICE);
 		if (dma_mapping_error(dev->dev, phytium_gem_obj->iova)) {
 			DRM_ERROR("fail to dma map carveout memory with size %lx\n", size);
@@ -486,8 +493,6 @@ struct phytium_gem_object *phytium_gem_create_object(struct drm_device *dev, uns
 		goto failed_dma_alloc;
 	}
 
-	phytium_gem_obj->base.funcs = &phytium_drm_gem_object_funcs;
-
 	phytium_gem_obj->size = size;
 	list_add_tail(&phytium_gem_obj->list, &priv->gem_list_head);
 	DRM_DEBUG_KMS("phytium_gem_obj iova:0x%pa size:0x%lx\n",
@@ -495,7 +500,11 @@ struct phytium_gem_object *phytium_gem_create_object(struct drm_device *dev, uns
 	return phytium_gem_obj;
 
 failed_dma_alloc:
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 	drm_gem_object_put(&phytium_gem_obj->base);
+#else
+	drm_gem_object_unreference_unlocked(&phytium_gem_obj->base);
+#endif
 
 	return ERR_PTR(ret);
 failed_object_init:
@@ -522,7 +531,11 @@ int phytium_gem_dumb_create(struct drm_file *file, struct drm_device *dev,
 		DRM_ERROR("failed to drm_gem_handle_create\n");
 		goto failed_gem_handle;
 	}
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 	drm_gem_object_put(&phytium_gem_obj->base);
+#else
+	drm_gem_object_unreference_unlocked(&phytium_gem_obj->base);
+#endif
 
 	return 0;
 failed_gem_handle:

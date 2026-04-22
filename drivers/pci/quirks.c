@@ -30,7 +30,11 @@
 #include <linux/suspend.h>
 #include <linux/switchtec.h>
 #include <asm/dma.h>	/* isa_dma_bridge_buggy */
+#include <linux/crash_dump.h>
 #include "pci.h"
+#ifdef CONFIG_PSWIOTLB
+#include <linux/pswiotlb.h>
+#endif
 
 static ktime_t fixup_debug_start(struct pci_dev *dev,
 				 void (*fn)(struct pci_dev *dev))
@@ -3941,12 +3945,12 @@ static int nvme_disable_and_flr(struct pci_dev *dev, int probe)
 	void __iomem *bar;
 	u16 cmd;
 	u32 cfg;
-
+	printk("%s began\n", __func__);
 	if (dev->class != PCI_CLASS_STORAGE_EXPRESS ||
 	    !pcie_has_flr(dev) || !pci_resource_start(dev, 0))
 		return -ENOTTY;
 
-	if (probe)
+	if (probe & !is_kdump_kernel())
 		return 0;
 
 	bar = pci_iomap(dev, 0, NVME_REG_CC + sizeof(cfg));
@@ -4000,7 +4004,7 @@ static int nvme_disable_and_flr(struct pci_dev *dev, int probe)
 	pci_iounmap(dev, bar);
 
 	pcie_flr(dev);
-
+	printk("%s finished\n", __func__);
 	return 0;
 }
 
@@ -4096,6 +4100,7 @@ static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 	{ PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_IVB_M2_VGA,
 		reset_ivb_igd },
 	{ PCI_VENDOR_ID_SAMSUNG, 0xa804, nvme_disable_and_flr },
+	{ PCI_VENDOR_ID_SAMSUNG, 0xa809, nvme_disable_and_flr },
 	{ PCI_VENDOR_ID_INTEL, 0x0953, delay_250ms_after_flr },
 	{ PCI_VENDOR_ID_CHELSIO, PCI_ANY_ID,
 		reset_chelsio_generic_dev },
@@ -5044,6 +5049,7 @@ static const struct pci_dev_acs_enabled {
 	{ 0x10b5, PCI_ANY_ID, pci_quirk_xgene_acs },
 	/* because rootcomplex Vendor id is 0x17cd on phytium cpu */
 	{ 0x17cd, PCI_ANY_ID, pci_quirk_xgene_acs },
+	{ 0x1db7, PCI_ANY_ID, pci_quirk_xgene_acs },
 #endif
 	/* Mucse multi-function devices */
 	{ PCI_VENDOR_ID_MUCSE, 0x1000, pci_quirk_mf_endpoint_acs },
@@ -5443,6 +5449,7 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0142, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0144, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0420, quirk_no_ext_tags);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SERVERWORKS, 0x0422, quirk_no_ext_tags);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PHYTIUM, 0xdc3a, quirk_no_ext_tags);
 
 #ifdef CONFIG_PCI_ATS
 static void quirk_no_ats(struct pci_dev *pdev)
@@ -5913,6 +5920,17 @@ static void pci_fixup_no_d0_pme(struct pci_dev *dev)
 	dev->pme_support &= ~(PCI_PM_CAP_PME_D0 >> PCI_PM_CAP_PME_SHIFT);
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ASMEDIA, 0x2142, pci_fixup_no_d0_pme);
+
+void pci_configure_pswiotlb(struct pci_dev *dev, struct pci_bus *bus)
+{
+#ifdef CONFIG_PSWIOTLB
+	if ((pswiotlb_force_disable != true) &&
+		is_phytium_ps_socs()) {
+		pswiotlb_store_local_node(dev, bus);
+		dma_set_seg_boundary(&dev->dev, 0xffffffffffff);
+	}
+#endif
+}
 
 /*
  * Device 12d8:0x400e [OHCI] and 12d8:0x400f [EHCI]

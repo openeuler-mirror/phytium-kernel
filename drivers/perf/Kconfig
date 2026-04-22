@@ -142,4 +142,6 @@ config ARM64_BRBE
 
 source "drivers/perf/hisilicon/Kconfig"
 
+source "drivers/perf/phytium/Kconfig"
+
 endmenu

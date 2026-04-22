@@ -7,7 +7,12 @@
 #ifndef __PHYTIUM_DISPLAY_DRV_H__
 #define __PHYTIUM_DISPLAY_DRV_H__
 
+#include <linux/version.h>
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
+#include <drm/drmP.h>
+#endif
 #include <drm/drm_print.h>
+#include <linux/pwm.h>
 #include <drm/drm_fb_helper.h>
 
 #define DEBUG_LOG 0
@@ -20,6 +25,7 @@
 #define DRV_DATE	"20201220"
 #define DRV_MAJOR	1
 #define DRV_MINOR	1
+#define DC_DRIVER_VERSION "1.0.0"
 
 /* come from GPU */
 #define	DRM_FORMAT_MOD_VENDOR_PHYTIUM	0x92
@@ -65,11 +71,15 @@ struct phytium_device_info {
 	unsigned char num_pipes;
 	unsigned char total_pipes;
 	unsigned char edp_mask;
+	bool bmc_mode;
+	unsigned char reserve[2];
 	unsigned int crtc_clock_max;
 	unsigned int hdisplay_max;
 	unsigned int vdisplay_max;
 	unsigned int backlight_max;
+	unsigned int backlight_min;
 	unsigned long address_mask;
+	struct pwm_device *pwm;
 };
 
 struct phytium_display_private {
@@ -115,6 +125,8 @@ struct phytium_display_private {
 	/* DMA info */
 	int dma_inited;
 	struct dma_chan *dma_chan;
+	/*BL GPIO info*/
+	struct gpio_desc *edp_bl_en, *edp_power_en;
 };
 
 static inline unsigned int

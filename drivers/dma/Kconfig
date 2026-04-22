@@ -756,6 +756,25 @@ config ZX_DMA
 	help
 	  Support the DMA engine for ZTE ZX family platform devices.
 
+config PHYTIUM_DDMA
+	bool "Phytium PE220x DDMA support"
+	depends on (ARCH_PHYTIUM || COMPILE_TEST)
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Enable support for Phytium PE220x DDMA controller.
+
+config PHYTIUM_GDMA
+	bool "Phytium GDMA support"
+	depends on (ARCH_PHYTIUM || COMPILE_TEST)
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Enable support for Phytium GDMA controller.
+
+	  This engine provides acceleration for memory copy operations, it does
+	  not support peripherals to memory data transfer. Say Y here if you have
+	  such a chipset. If unsure, say N.
 
 # driver files
 source "drivers/dma/bestcomm/Kconfig"

@@ -1284,6 +1284,13 @@ void xhci_hc_died(struct xhci_hcd *xhci)
 	/* inform usb core hc died if PCI remove isn't already handling it */
 	if (!(xhci->xhc_state & XHCI_STATE_REMOVING))
 		usb_hc_died(xhci_to_hcd(xhci));
+
+#ifdef CONFIG_ARCH_PHYTIUM
+	if (is_pe220x() || is_pd2408()) {
+		if (xhci->get_xhci_wq && (xhci->quirks & XHCI_S1_SUSPEND_WAKEUP))
+			mod_delayed_work(xhci->get_xhci_wq(), &xhci->xhci_delay_wq, 1000);
+	}
+#endif
 }
 
 /* Watchdog timer function for when a stop endpoint command fails to complete.
@@ -3158,6 +3165,12 @@ irqreturn_t xhci_irq(struct usb_hcd *hcd)
 		xhci_hc_died(xhci);
 		ret = IRQ_HANDLED;
 		goto out;
+	}
+
+	if ((status & STS_WAKEUP) && (xhci->quirks & XHCI_S1_SUSPEND_WAKEUP)) {
+		status |= STS_WAKEUP;
+		writel(status, &xhci->op_regs->status);
+		ret = IRQ_HANDLED;
 	}
 
 	if (!(status & STS_EINT))

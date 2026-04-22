@@ -173,6 +173,11 @@ config ICPLUS_PHY
 	help
 	  Currently supports the IP175C and IP1001 PHYs.
 
+config LINKYUM_PHY
+	tristate "LINKYUM PHYs"
+	help
+	  Currently supports the LY1211A LY1211S LY1241A LY1241BPHYs.
+
 config LXT_PHY
 	tristate "Intel LXT PHYs"
 	help
@@ -313,6 +318,12 @@ config XILINX_GMII2RGMII
 	  This driver support xilinx GMII to RGMII IP core it provides
 	  the Reduced Gigabit Media Independent Interface(RGMII) between
 	  Ethernet physical media devices and the Gigabit Ethernet controller.
+
+config MOTORCOMM_PHY
+	tristate "Motorcomm PHYs"
+	help
+		Enables support for Motorcomm network PHYs.
+		Currently supports the YT8511 gigabit PHY.
 
 endif # PHYLIB
 

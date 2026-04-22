@@ -47,3 +47,4 @@ obj-$(CONFIG_XILLYBUS)		+= xillybus/
 obj-$(CONFIG_POWERNV_OP_PANEL)	+= powernv-op-panel.o
 obj-$(CONFIG_ADI)		+= adi.o
 obj-$(CONFIG_PIN_MEMORY_DEV)	+= pin_memory.o
+obj-$(CONFIG_PHYTNET_LED) += phytnetled/

@@ -130,6 +130,10 @@ obj-$(CONFIG_I2C_XLR)		+= i2c-xlr.o
 obj-$(CONFIG_I2C_XLP9XX)	+= i2c-xlp9xx.o
 obj-$(CONFIG_I2C_RCAR)		+= i2c-rcar.o
 obj-$(CONFIG_I2C_ZX2967)	+= i2c-zx2967.o
+obj-$(CONFIG_I2C_PHYTIUM_CORE)      += i2c-phytium-core.o
+i2c-phytium-core-objs		:= i2c-phytium-common.o i2c-phytium-mix.o
+obj-$(CONFIG_I2C_PHYTIUM_PCI)       += i2c-phytium-pci.o
+obj-$(CONFIG_I2C_PHYTIUM_PLATFORM)  += i2c-phytium-platform.o
 
 # External I2C/SMBus adapter drivers
 obj-$(CONFIG_I2C_DIOLAN_U2C)	+= i2c-diolan-u2c.o
@@ -155,5 +159,5 @@ obj-$(CONFIG_I2C_SIBYTE)	+= i2c-sibyte.o
 obj-$(CONFIG_I2C_XGENE_SLIMPRO) += i2c-xgene-slimpro.o
 obj-$(CONFIG_SCx200_ACB)	+= scx200_acb.o
 obj-$(CONFIG_I2C_FSI)		+= i2c-fsi.o
-
+obj-$(CONFIG_I2C_V2_PLATFORM)	+= phytium_i2c_v2/
 ccflags-$(CONFIG_I2C_DEBUG_BUS) := -DDEBUG
