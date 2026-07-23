@@ -34,7 +34,7 @@
 #define GPIO_PORT_STRIDE	(GPIO_EXT_PORTB - GPIO_EXT_PORTA)
 #define GPIO_CLEAR_IRQ		0xffffffff
 
-#define PHYTIUM_GPIO_DRIVER_VERSION "1.1.2"
+#define PHYTIUM_GPIO_DRIVER_VERSION "1.1.3"
 
 struct pin_loc {
 	unsigned int port;
@@ -88,6 +88,8 @@ void phytium_gpio_irq_print_chip(struct irq_data *data, struct seq_file *p);
 void phytium_gpio_irq_enable(struct irq_data *d);
 void phytium_gpio_irq_disable(struct irq_data *d);
 void phytium_gpio_irq_handler(struct irq_desc *desc);
+#ifdef CONFIG_PM_SLEEP
 int phytium_gpio_irq_set_wake(struct irq_data *d, unsigned int enable);
+#endif
 int phytium_gpio_irq_set_affinity(struct irq_data *d, const struct cpumask *mask_val, bool force);
 #endif

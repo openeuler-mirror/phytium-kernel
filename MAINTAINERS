@@ -17539,6 +17539,7 @@ F:	Documentation/devicetree/bindings/hwmon/phytium,tacho.yaml
 F:	Documentation/devicetree/bindings/i2c/phytium,i2c-2.0.yaml
 F:	Documentation/devicetree/bindings/i2c/phytium,i2c.yaml
 F:	Documentation/devicetree/bindings/i3c/phytium,i3c-master.yaml
+F:	Documentation/devicetree/bindings/media/phytium,jpeg-vram.yaml
 F:	Documentation/devicetree/bindings/media/phytium,jpeg.yaml
 F:	Documentation/devicetree/bindings/iio/adc/phytium,adc.yaml
 F:	Documentation/devicetree/bindings/input/phytium,keypad.yaml
@@ -17556,6 +17557,7 @@ F:	Documentation/devicetree/bindings/mtd/phytium,nfc.yaml
 F:	Documentation/devicetree/bindings/net/can/phytium,can.yaml
 F:	Documentation/devicetree/bindings/net/phytmac.yaml
 F:	Documentation/devicetree/bindings/pci/phytium,pd2008-pcie-ep.yaml
+F:	Documentation/devicetree/bindings/pci/phytium,pe2201-pcie-ep.yaml
 F:	Documentation/devicetree/bindings/pwm/phytium,pwm.yaml
 F:	Documentation/devicetree/bindings/reset/phytium,reset.yaml
 F:	Documentation/devicetree/bindings/rng/phytium,rng.yaml
@@ -17582,6 +17584,7 @@ F:	drivers/bus/phytium_pio.c
 F:	drivers/char/hw_random/phytium-rng.c
 F:	drivers/char/ipmi/bt_bmc_phytium.c
 F:	drivers/char/ipmi/kcs_bmc_phytium.c
+F:	drivers/char/tcm_usb_phytium.c
 F:	drivers/cpufreq/phytium_pstate.c
 F:	drivers/devfreq/phytium_dmu.c
 F:	drivers/devfreq/phytium_noc.c
@@ -17616,11 +17619,15 @@ F:	drivers/mtd/parsers/acpipart_core.c
 F:	drivers/net/can/phytium/*
 F:	drivers/net/ethernet/Kconfig
 F:	drivers/net/ethernet/Makefile
+F:	drivers/net/ethernet/phytium-pci-vnet/pci-ep-net/*
+F:	drivers/net/ethernet/phytium-pci-vnet/pci-rc-net/*
 F:	drivers/net/ethernet/phytium/*
 F:	drivers/net/ethernet/stmicro/stmmac/dwmac-phytium.c
 F:	drivers/pci/controller/pcie-phytium*
 F:	drivers/perf/phytium/*
-F:	drivers/perf/phytium/phytium_dmu_pmu_pd2408.c
+F:	drivers/perf/phytium/phytium_ddr_pmu.c
+F:	drivers/perf/phytium/phytium_msi_pmu.c
+F:	drivers/perf/phytium/phytium_pcie_link_pmu.c
 F:	drivers/perf/phytium/phytium_pcie_pmu.c
 F:	drivers/pwm/pwm-phytium.c
 F:	drivers/reset/reset-phytium.c
@@ -17632,6 +17639,7 @@ F:	drivers/spi/spi-phytium-qspi.c
 F:	drivers/spi/spi-phytium-v2.c
 F:	drivers/tty/serial/phytium-uart-v2.c
 F:	drivers/tty/serial/phytium-uart.c
+F:	drivers/usb/gadget/*
 F:	drivers/usb/phytium/*
 F:	drivers/usb/phytium/phytium_usb_v2*
 F:	drivers/usb/typec/role-switch-phytium.c

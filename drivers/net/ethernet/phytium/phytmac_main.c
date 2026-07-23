@@ -1321,6 +1321,7 @@ static int phytmac_tx_clean(struct phytmac_queue *queue, int budget)
 	int packet_count = 0;
 	unsigned int tail = queue->tx_tail;
 	unsigned int head;
+	u32 bytes = 0;
 
 	spin_lock(&queue->tx_lock);
 
@@ -1352,6 +1353,7 @@ static int phytmac_tx_clean(struct phytmac_queue *queue, int budget)
 					pdata->ndev->stats.tx_bytes += tx_skb->skb->len;
 					queue->stats.tx_bytes += tx_skb->skb->len;
 					packet_count++;
+					bytes += tx_skb->skb->len;
 				}
 			} else if (tx_skb->type == PHYTMAC_TYPE_XDP) {
 				if (tx_skb->xdpf) {
@@ -1377,6 +1379,9 @@ static int phytmac_tx_clean(struct phytmac_queue *queue, int budget)
 		if (head >= pdata->tx_ring_size)
 			head &= (pdata->tx_ring_size - 1);
 	}
+
+	netdev_tx_completed_queue(netdev_get_tx_queue(pdata->ndev, queue_index),
+					packet_count, bytes);
 
 	queue->tx_head = head;
 	if (__netif_subqueue_stopped(pdata->ndev, queue_index) &&
@@ -1797,6 +1802,9 @@ static netdev_tx_t phytmac_start_xmit(struct sk_buff *skb, struct net_device *nd
 	}
 
 	skb_tx_timestamp(skb);
+	netdev_tx_sent_queue(netdev_get_tx_queue(pdata->ndev, queue_index),
+				skb->len);
+
 	/* Make newly descriptor to hardware */
 	wmb();
 
@@ -1838,6 +1846,36 @@ static int phytmac_phylink_connect(struct phytmac *pdata)
 	}
 
 	return 0;
+}
+
+static void phytmac_sgmii_speed_switch(struct phytmac *pdata, int speed)
+{
+	struct phytmac_hw_if *hw_if = pdata->hw_if;
+	int ori_speed = pdata->ori_speed;
+
+	pdata->ori_speed = speed;
+
+	if (pdata->phy_interface != PHY_INTERFACE_MODE_SGMII)
+		goto out;
+
+	if (pdata->version != VERSION_V0)
+		goto out;
+
+	if (ori_speed == speed)
+		goto out;
+
+	/* Reject switching between 1G/100M/10M, since these share the same
+	 * internal PHY speed mode.
+	 */
+	if ((ori_speed == SPEED_1000 || ori_speed == SPEED_100 || ori_speed == SPEED_10) &&
+	    (speed == SPEED_1000 || speed == SPEED_100 || speed == SPEED_10))
+		goto out;
+
+	if (hw_if->phy_speed_switch)
+		hw_if->phy_speed_switch(pdata, speed);
+
+out:
+	return;
 }
 
 int phytmac_pcs_config(struct phylink_pcs *pcs, unsigned int mode,
@@ -1967,7 +2005,10 @@ static void phytmac_mac_link_up(struct phylink_config *config,
 
 	spin_lock_irqsave(&pdata->lock, flags);
 
-	hw_if->mac_linkup(pdata, interface, speed, duplex);
+	if (phy)
+		phytmac_sgmii_speed_switch(pdata, speed);
+
+	hw_if->mac_linkup(pdata, pdata->phy_interface, speed, duplex);
 
 	if (rx_pause != pdata->pause) {
 		hw_if->enable_pause(pdata, rx_pause);
@@ -2267,6 +2308,7 @@ static int phytmac_close(struct net_device *ndev)
 	for (q = 0, queue = pdata->queues; q < pdata->queues_num; ++q, ++queue) {
 		napi_disable(&queue->tx_napi);
 		napi_disable(&queue->rx_napi);
+		netdev_tx_reset_queue(netdev_get_tx_queue(pdata->ndev, q));
 	}
 
 	phylink_stop(pdata->phylink);

@@ -16,6 +16,7 @@
 #include <linux/spinlock.h>
 #include <linux/ptp_clock_kernel.h>
 #include <linux/acpi.h>
+#include <linux/arm-smccc.h>
 #include "phytmac.h"
 #include "phytmac_v1.h"
 
@@ -177,6 +178,52 @@ static int phytmac_pcs_software_reset(struct phytmac *pdata, int reset)
 	return 0;
 }
 
+static void phytmac_phy_speed_switch(struct phytmac *pdata, int speed)
+{
+	struct arm_smccc_res res;
+	struct phyinit_cfg cfg;
+	int id;
+
+	switch (pdata->ndev->base_addr) {
+	case MAC0_ADDR_BASE:
+		id = 0;
+		break;
+	case MAC1_ADDR_BASE:
+		id = 1;
+		break;
+	default:
+		return;
+	}
+
+	switch (speed) {
+	case SPEED_1000:
+	case SPEED_100:
+	case SPEED_10:
+		cfg.phy_speed = PHY_SPEED_1000(id);
+		break;
+	case SPEED_2500:
+		cfg.phy_speed = PHY_SPEED_2500(id);
+		break;
+	default:
+		return;
+	}
+
+	cfg.phy_domain = PHY_INIT(id);
+	cfg.phy_multiplex = PHY_MULTIPLEX_GMAC(id);
+	cfg.phy_mode = PHY_MODE_SGMII(id);
+
+	arm_smccc_smc(PHY_INIT_SMC_ID, cfg.phy_domain, cfg.phy_multiplex,
+		      cfg.phy_mode, cfg.phy_speed, 0, 0, 0, &res);
+	if (res.a0 == SMCCC_RET_NOT_SUPPORTED) {
+		netdev_warn(pdata->ndev, "PHY_INIT_SMC_ID not implemented, skipping ....\n");
+		goto out;
+	}
+	netdev_info(pdata->ndev, "switch speed to %dMb/s successfully\n", speed);
+
+out:
+	return;
+}
+
 static int phytmac_mac_linkup(struct phytmac *pdata, phy_interface_t interface,
 			      int speed, int duplex)
 {
@@ -216,6 +263,8 @@ static int phytmac_mac_linkup(struct phytmac *pdata, phy_interface_t interface,
 	if (interface == PHY_INTERFACE_MODE_SGMII) {
 		if (speed == SPEED_2500)
 			phytmac_enable_autoneg(pdata, 0);
+		else
+			phytmac_enable_autoneg(pdata, 1);
 	}
 
 	return 0;
@@ -443,14 +492,6 @@ static int phytmac_powerup_hw(struct phytmac *pdata, int on)
 {
 	u32 status, data0, data1, rdata1;
 	int ret;
-	acpi_handle handle;
-	union acpi_object args[3];
-	struct acpi_object_list arg_list = {
-		.pointer = args,
-		.count = ARRAY_SIZE(args),
-	};
-	acpi_status acpi_sts;
-	unsigned long long rv;
 
 	if (!(pdata->capacities & PHYTMAC_CAPS_PWCTRL)) {
 		pdata->power_state = on;
@@ -458,6 +499,16 @@ static int phytmac_powerup_hw(struct phytmac *pdata, int on)
 	}
 
 	if (has_acpi_companion(pdata->dev)) {
+#ifdef CONFIG_ACPI
+		acpi_handle handle;
+		union acpi_object args[3];
+		struct acpi_object_list arg_list = {
+			.pointer = args,
+			.count = ARRAY_SIZE(args),
+		};
+		acpi_status acpi_sts;
+		unsigned long long rv;
+
 		handle = ACPI_HANDLE(pdata->dev);
 
 		netdev_info(pdata->ndev, "set gmac power %s\n",
@@ -482,6 +533,7 @@ static int phytmac_powerup_hw(struct phytmac *pdata, int on)
 			if (rv)
 				netdev_err(pdata->ndev, "Failed to power off\n");
 		}
+#endif
 	} else {
 		ret = readx_poll_timeout(PHYTMAC_READ_STAT, pdata, status, !status,
 					 1, PHYTMAC_TIMEOUT);
@@ -1418,6 +1470,7 @@ struct phytmac_hw_if phytmac_1p0_hw = {
 	.get_stats = phytmac_get_hw_stats,
 	.set_mac_address = phytmac_set_mac_addr,
 	.get_mac_address = phytmac_get_mac_addr,
+	.phy_speed_switch = phytmac_phy_speed_switch,
 	.mdio_idle = phytmac_mdio_idle,
 	.mdio_read = phytmac_mdio_data_read_c22,
 	.mdio_write = phytmac_mdio_data_write_c22,

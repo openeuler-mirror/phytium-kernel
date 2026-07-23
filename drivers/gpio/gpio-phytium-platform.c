@@ -41,7 +41,9 @@ static const struct irq_chip phytium_gpio_irq_chip = {
 	.irq_print_chip		= phytium_gpio_irq_print_chip,
 	.irq_enable		= phytium_gpio_irq_enable,
 	.irq_disable		= phytium_gpio_irq_disable,
+#ifdef CONFIG_PM_SLEEP
 	.irq_set_wake		= phytium_gpio_irq_set_wake,
+#endif
 	.irq_set_affinity	= phytium_gpio_irq_set_affinity,
 	.flags			= IRQCHIP_IMMUTABLE,
 	GPIOCHIP_IRQ_RESOURCE_HELPERS,
@@ -136,6 +138,20 @@ static int phytium_gpio_probe(struct platform_device *pdev)
 	return 0;
 }
 
+/* Rebind parent-to-child dispatch chain and enable parent IRQ lines. */
+static void phytium_set_irq_chained_handler(struct phytium_gpio *gpio)
+{
+	struct gpio_irq_chip *girq = &gpio->gc.irq;
+	int i;
+
+	for (i = 0; i < girq->num_parents; i++) {
+		if (gpio->irq[i] >= 0) {
+			irq_set_chained_handler_and_data(gpio->irq[i],
+			phytium_gpio_irq_handler, &gpio->gc);
+		}
+	}
+}
+
 #ifdef CONFIG_PM_SLEEP
 static int phytium_gpio_suspend(struct device *dev)
 {
@@ -192,6 +208,8 @@ static int phytium_gpio_resume(struct device *dev)
 	gpio->is_resuming = 0;
 
 	raw_spin_unlock_irqrestore(&gpio->lock, flags);
+
+	phytium_set_irq_chained_handler(gpio);
 
 	return 0;
 }
